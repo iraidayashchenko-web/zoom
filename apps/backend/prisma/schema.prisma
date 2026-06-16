@@ -1,0 +1,124 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum Role { GUEST USER HOST ADMIN SUPER_ADMIN }
+enum UserStatus { ACTIVE INVITED SUSPENDED DELETED }
+enum MeetingType { INSTANT SCHEDULED RECURRING }
+enum MeetingStatus { SCHEDULED LIVE ENDED CANCELLED }
+enum ParticipantRole { GUEST ATTENDEE HOST CO_HOST }
+enum RecordingStatus { REQUESTED RECORDING PROCESSING READY FAILED }
+enum MessageScope { PUBLIC PRIVATE }
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String?
+  googleId String? @unique
+  emailVerifiedAt DateTime?
+  role Role @default(USER)
+  status UserStatus @default(ACTIVE)
+  avatarUrl String?
+  name String
+  timezone String @default("UTC")
+  language String @default("en")
+  company String?
+  cameraPreference Json @default("{}")
+  audioPreference Json @default("{}")
+  notificationPreference Json @default("{}")
+  sessions Session[]
+  hostedMeetings Meeting[] @relation("MeetingHost")
+  participants MeetingParticipant[]
+  messages Message[]
+  pollVotes PollVote[]
+  auditLogs AuditLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, expiresAt])
+}
+
+model Meeting {
+  id String @id @default(cuid())
+  title String
+  description String?
+  type MeetingType
+  status MeetingStatus @default(SCHEDULED)
+  startsAt DateTime
+  endsAt DateTime
+  passwordHash String?
+  recurrenceRule String?
+  hostId String
+  host User @relation("MeetingHost", fields: [hostId], references: [id])
+  settings MeetingSettings?
+  participants MeetingParticipant[]
+  messages Message[]
+  recordings Recording[]
+  polls Poll[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([hostId, startsAt])
+  @@index([status, startsAt])
+}
+
+model MeetingSettings {
+  id String @id @default(cuid())
+  meetingId String @unique
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  waitingRoom Boolean @default(true)
+  recordingEnabled Boolean @default(false)
+  chatEnabled Boolean @default(true)
+  screenSharingEnabled Boolean @default(true)
+  locked Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MeetingParticipant {
+  id String @id @default(cuid())
+  meetingId String
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId String?
+  user User? @relation(fields: [userId], references: [id])
+  displayName String
+  role ParticipantRole @default(ATTENDEE)
+  joinedAt DateTime @default(now())
+  leftAt DateTime?
+  muted Boolean @default(false)
+  cameraEnabled Boolean @default(false)
+  screenSharing Boolean @default(false)
+  @@index([meetingId, joinedAt])
+  @@index([userId])
+}
+
+model Message {
+  id String @id @default(cuid())
+  meetingId String
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  senderId String
+  sender User @relation(fields: [senderId], references: [id])
+  recipientId String?
+  scope MessageScope @default(PUBLIC)
+  body String
+  reactions Json @default("{}")
+  attachments Attachment[]
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  @@index([meetingId, createdAt])
+}
+
+model Attachment { id String @id @default(cuid()) messageId String message Message @relation(fields: [messageId], references: [id], onDelete: Cascade) fileName String mimeType String byteSize Int storageKey String createdAt DateTime @default(now()) }
+model Recording { id String @id @default(cuid()) meetingId String meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade) status RecordingStatus @default(REQUESTED) storageKey String? durationSeconds Int? startedAt DateTime? stoppedAt DateTime? createdAt DateTime @default(now()) @@index([meetingId, createdAt]) }
+model Poll { id String @id @default(cuid()) meetingId String meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade) question String options Json votes PollVote[] createdAt DateTime @default(now()) closedAt DateTime? }
+model PollVote { id String @id @default(cuid()) pollId String poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade) userId String user User @relation(fields: [userId], references: [id]) optionId String createdAt DateTime @default(now()) @@unique([pollId, userId]) }
+model AuditLog { id String @id @default(cuid()) actorId String? actor User? @relation(fields: [actorId], references: [id]) action String entityType String entityId String metadata Json @default("{}") ipAddress String? createdAt DateTime @default(now()) @@index([entityType, entityId]) @@index([createdAt]) }
