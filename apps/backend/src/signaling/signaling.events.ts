@@ -1,0 +1,18 @@
+export const SIGNALING_EVENTS = {
+  JOIN_ROOM: 'join-room',
+  LEAVE_ROOM: 'leave-room',
+  OFFER: 'offer',
+  ANSWER: 'answer',
+  ICE_CANDIDATE: 'ice-candidate',
+  SCREEN_SHARE_START: 'screen-share-start',
+  SCREEN_SHARE_STOP: 'screen-share-stop',
+  MUTE_USER: 'mute-user',
+  KICK_USER: 'kick-user',
+  RAISE_HAND: 'raise-hand',
+  PARTICIPANT_JOINED: 'participant-joined',
+  PARTICIPANT_LEFT: 'participant-left',
+  PARTICIPANT_MUTED: 'participant-muted',
+  PARTICIPANT_KICKED: 'participant-kicked',
+  HAND_RAISED: 'hand-raised',
+  SIGNALING_ERROR: 'signaling-error',
+} as const;
