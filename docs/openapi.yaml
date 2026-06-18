@@ -1,0 +1,55 @@
+openapi: 3.1.0
+info:
+  title: NovaMeet API
+  version: 1.0.0
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check
+      responses: { '200': { description: OK } }
+  /api/v1/auth/register:
+    post:
+      summary: Register with email and password
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Register' } } } }
+      responses: { '201': { description: Created } }
+  /api/v1/auth/login:
+    post:
+      summary: Login and issue access and refresh tokens
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Login' } } } }
+      responses: { '201': { description: Authenticated } }
+  /api/v1/meetings:
+    get:
+      summary: List meetings for authenticated host
+      responses: { '200': { description: Meeting list } }
+    post:
+      summary: Create a meeting
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateMeeting' } } } }
+      responses: { '201': { description: Created } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Register:
+      type: object
+      required: [email, name, password]
+      properties: { email: { type: string, format: email }, name: { type: string }, password: { type: string, minLength: 12 } }
+    Login:
+      type: object
+      required: [email, password]
+      properties: { email: { type: string, format: email }, password: { type: string } }
+    CreateMeeting:
+      type: object
+      required: [title, startsAt, endsAt, type]
+      properties:
+        title: { type: string, minLength: 3 }
+        description: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        type: { enum: [INSTANT, SCHEDULED, RECURRING] }
+        meetingPassword: { type: string }
+        waitingRoom: { type: boolean }
+        recordingEnabled: { type: boolean }
+        chatEnabled: { type: boolean }
+        screenSharingEnabled: { type: boolean }
