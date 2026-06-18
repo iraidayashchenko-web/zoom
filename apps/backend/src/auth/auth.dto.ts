@@ -1,3 +1,8 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
-export class RegisterDto { @IsEmail() email!: string; @IsString() @MinLength(2) name!: string; @IsString() @MinLength(12) password!: string; }
-export class LoginDto { @IsEmail() email!: string; @IsString() password!: string; }
+export { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+export { GoogleOAuthProfileDto } from './dto/google-oauth.dto.js';
+export { LoginDto } from './dto/login.dto.js';
+export { LogoutDto } from './dto/logout.dto.js';
+export { RefreshTokenDto } from './dto/refresh-token.dto.js';
+export { RegisterDto } from './dto/register.dto.js';
+export { ResetPasswordDto } from './dto/reset-password.dto.js';
+export { VerifyEmailDto } from './dto/verify-email.dto.js';
