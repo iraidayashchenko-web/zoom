@@ -1,0 +1,3 @@
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+export enum MeetingTypeDto { INSTANT = 'INSTANT', SCHEDULED = 'SCHEDULED', RECURRING = 'RECURRING' }
+export class CreateMeetingDto { @IsString() @MinLength(3) title!: string; @IsOptional() @IsString() description?: string; @IsDateString() startsAt!: string; @IsDateString() endsAt!: string; @IsEnum(MeetingTypeDto) type!: MeetingTypeDto; @IsOptional() @IsString() meetingPassword?: string; @IsBoolean() waitingRoom = true; @IsBoolean() recordingEnabled = false; @IsBoolean() chatEnabled = true; @IsBoolean() screenSharingEnabled = true; }

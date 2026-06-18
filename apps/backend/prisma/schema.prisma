@@ -1,0 +1,430 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  GUEST
+  USER
+  HOST
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DELETED
+}
+
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum MeetingType {
+  INSTANT
+  SCHEDULED
+  RECURRING
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum ParticipantRole {
+  GUEST
+  ATTENDEE
+  HOST
+  CO_HOST
+}
+
+enum ParticipantStatus {
+  INVITED
+  WAITING
+  JOINED
+  LEFT
+  REMOVED
+}
+
+enum MessageScope {
+  PUBLIC
+  PRIVATE
+}
+
+enum RecordingStatus {
+  REQUESTED
+  RECORDING
+  PROCESSING
+  READY
+  FAILED
+  DELETED
+}
+
+enum PollStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum AttachmentStatus {
+  PENDING
+  READY
+  FAILED
+  DELETED
+}
+
+enum NotificationType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  MEETING_INVITE
+  MEETING_REMINDER
+  RECORDING_READY
+  HOST_CONTROL
+  SYSTEM
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+model User {
+  id                         String               @id @default(uuid()) @db.Uuid
+  email                      String               @unique @db.VarChar(320)
+  passwordHash               String?              @map("password_hash")
+  googleId                   String?              @unique @map("google_id") @db.VarChar(191)
+  emailVerifiedAt            DateTime?            @map("email_verified_at") @db.Timestamptz(6)
+  role                       Role                 @default(USER)
+  status                     UserStatus           @default(ACTIVE)
+  avatarUrl                  String?              @map("avatar_url")
+  name                       String               @db.VarChar(200)
+  timezone                   String               @default("UTC") @db.VarChar(64)
+  language                   String               @default("en") @db.VarChar(16)
+  company                    String?              @db.VarChar(200)
+  cameraPreference           Json                 @default("{}") @map("camera_preference")
+  audioPreference            Json                 @default("{}") @map("audio_preference")
+  notificationPreference     Json                 @default("{}") @map("notification_preference")
+  lastLoginAt                DateTime?            @map("last_login_at") @db.Timestamptz(6)
+  createdAt                  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                  DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  sessions                   Session[]
+  refreshTokens              RefreshToken[]
+  hostedMeetings             Meeting[]            @relation("MeetingHost")
+  participants               MeetingParticipant[]
+  sentMessages               Message[]            @relation("MessageSender")
+  receivedMessages           Message[]            @relation("MessageRecipient")
+  recordingsStarted          Recording[]          @relation("RecordingStartedBy")
+  uploadedAttachments        Attachment[]         @relation("AttachmentUploader")
+  pollVotes                  PollVote[]
+  auditLogs                  AuditLog[]           @relation("AuditActor")
+  notifications              Notification[]
+
+  @@index([status, deletedAt])
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Session {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  status         SessionStatus  @default(ACTIVE)
+  userAgent      String?        @map("user_agent")
+  ipAddress      String?        @map("ip_address") @db.Inet
+  deviceId       String?        @map("device_id") @db.VarChar(191)
+  expiresAt      DateTime       @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime?      @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens  RefreshToken[]
+
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  sessionId      String     @map("session_id") @db.Uuid
+  tokenHash      String     @map("token_hash")
+  tokenDigest    String     @unique @map("token_digest") @db.VarChar(64)
+  familyId       String     @map("family_id") @db.Uuid
+  replacedById   String?    @unique @map("replaced_by_id") @db.Uuid
+  expiresAt      DateTime   @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime?  @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session        Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  replacedBy     RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id])
+  replaces       RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId, expiresAt])
+  @@index([sessionId])
+  @@index([familyId])
+  @@index([revokedAt])
+  @@index([deletedAt])
+  @@map("refresh_tokens")
+}
+
+model Meeting {
+  id                    String               @id @default(uuid()) @db.Uuid
+  hostId                String               @map("host_id") @db.Uuid
+  title                 String               @db.VarChar(255)
+  description           String?
+  type                  MeetingType
+  status                MeetingStatus        @default(SCHEDULED)
+  startsAt              DateTime             @map("starts_at") @db.Timestamptz(6)
+  endsAt                DateTime             @map("ends_at") @db.Timestamptz(6)
+  passwordHash          String?              @map("password_hash")
+  recurrenceRule        String?              @map("recurrence_rule")
+  timezone              String               @default("UTC") @db.VarChar(64)
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  host                  User                 @relation("MeetingHost", fields: [hostId], references: [id], onDelete: Restrict)
+  settings              MeetingSettings?
+  participants          MeetingParticipant[]
+  messages              Message[]
+  attachments           Attachment[]
+  recordings            Recording[]
+  polls                 Poll[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+
+  @@index([hostId, startsAt])
+  @@index([status, startsAt])
+  @@index([type])
+  @@index([deletedAt])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id               String             @id @default(uuid()) @db.Uuid
+  meetingId        String             @map("meeting_id") @db.Uuid
+  userId           String?            @map("user_id") @db.Uuid
+  displayName      String             @map("display_name") @db.VarChar(200)
+  role             ParticipantRole    @default(ATTENDEE)
+  status           ParticipantStatus  @default(WAITING)
+  joinedAt         DateTime?          @map("joined_at") @db.Timestamptz(6)
+  leftAt           DateTime?          @map("left_at") @db.Timestamptz(6)
+  muted            Boolean            @default(false)
+  cameraEnabled    Boolean            @default(false) @map("camera_enabled")
+  screenSharing    Boolean            @default(false) @map("screen_sharing")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  meeting          Meeting            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, status])
+  @@index([meetingId, joinedAt])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("meeting_participants")
+}
+
+model MeetingSettings {
+  id                      String    @id @default(uuid()) @db.Uuid
+  meetingId               String    @unique @map("meeting_id") @db.Uuid
+  waitingRoom             Boolean   @default(true) @map("waiting_room")
+  recordingEnabled        Boolean   @default(false) @map("recording_enabled")
+  chatEnabled             Boolean   @default(true) @map("chat_enabled")
+  screenSharingEnabled    Boolean   @default(true) @map("screen_sharing_enabled")
+  locked                  Boolean   @default(false)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt               DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  meeting                 Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([deletedAt])
+  @@map("meeting_settings")
+}
+
+model Message {
+  id            String        @id @default(uuid()) @db.Uuid
+  meetingId     String        @map("meeting_id") @db.Uuid
+  senderId      String        @map("sender_id") @db.Uuid
+  recipientId   String?       @map("recipient_id") @db.Uuid
+  scope         MessageScope  @default(PUBLIC)
+  body          String
+  reactions     Json          @default("{}")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  meeting       Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  sender        User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  recipient     User?         @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+  attachments   Attachment[]
+
+  @@index([meetingId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([deletedAt])
+  @@map("messages")
+}
+
+model Attachment {
+  id            String            @id @default(uuid()) @db.Uuid
+  meetingId     String            @map("meeting_id") @db.Uuid
+  messageId     String?           @map("message_id") @db.Uuid
+  uploaderId    String?           @map("uploader_id") @db.Uuid
+  status        AttachmentStatus  @default(PENDING)
+  fileName      String            @map("file_name") @db.VarChar(255)
+  mimeType      String            @map("mime_type") @db.VarChar(127)
+  byteSize      BigInt            @map("byte_size")
+  storageKey    String            @unique @map("storage_key")
+  checksumSha256 String?          @map("checksum_sha256") @db.VarChar(64)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  meeting       Meeting           @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  message       Message?          @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  uploader      User?             @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, createdAt])
+  @@index([messageId])
+  @@index([uploaderId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("attachments")
+}
+
+model Recording {
+  id              String           @id @default(uuid()) @db.Uuid
+  meetingId       String           @map("meeting_id") @db.Uuid
+  startedById     String?          @map("started_by_id") @db.Uuid
+  status          RecordingStatus  @default(REQUESTED)
+  storageKey      String?          @unique @map("storage_key")
+  playbackUrl     String?          @map("playback_url")
+  durationSeconds Int?             @map("duration_seconds")
+  byteSize        BigInt?          @map("byte_size")
+  startedAt       DateTime?        @map("started_at") @db.Timestamptz(6)
+  stoppedAt       DateTime?        @map("stopped_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  meeting         Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  startedBy       User?            @relation("RecordingStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, createdAt])
+  @@index([status])
+  @@index([startedById])
+  @@index([deletedAt])
+  @@map("recordings")
+}
+
+model Poll {
+  id           String       @id @default(uuid()) @db.Uuid
+  meetingId    String       @map("meeting_id") @db.Uuid
+  question     String       @db.VarChar(500)
+  options      Json
+  status       PollStatus   @default(DRAFT)
+  anonymous    Boolean      @default(false)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  openedAt     DateTime?    @map("opened_at") @db.Timestamptz(6)
+  closedAt     DateTime?    @map("closed_at") @db.Timestamptz(6)
+  deletedAt    DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  meeting      Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  votes        PollVote[]
+
+  @@index([meetingId, status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("polls")
+}
+
+model PollVote {
+  id           String    @id @default(uuid()) @db.Uuid
+  pollId       String    @map("poll_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  optionId     String    @map("option_id") @db.VarChar(191)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  poll         Poll      @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([userId, createdAt])
+  @@index([deletedAt])
+  @@map("poll_votes")
+}
+
+model AuditLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  actorId       String?   @map("actor_id") @db.Uuid
+  meetingId     String?   @map("meeting_id") @db.Uuid
+  action        String    @db.VarChar(191)
+  entityType    String    @map("entity_type") @db.VarChar(191)
+  entityId      String    @map("entity_id") @db.Uuid
+  metadata      Json      @default("{}")
+  ipAddress     String?   @map("ip_address") @db.Inet
+  userAgent     String?   @map("user_agent")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  actor         User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  meeting       Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([meetingId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@index([deletedAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id          String             @id @default(uuid()) @db.Uuid
+  userId      String             @map("user_id") @db.Uuid
+  meetingId   String?            @map("meeting_id") @db.Uuid
+  type        NotificationType
+  status      NotificationStatus @default(UNREAD)
+  title       String             @db.VarChar(255)
+  body        String?
+  data        Json               @default("{}")
+  readAt      DateTime?          @map("read_at") @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting     Meeting?           @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([meetingId])
+  @@index([type])
+  @@index([deletedAt])
+  @@map("notifications")
+}
